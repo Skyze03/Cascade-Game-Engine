@@ -26,3 +26,9 @@ public enum Direction
     Left,
     Right
 }
+
+public enum PlayMode
+{
+    MoveEat,
+    Cascade
+}

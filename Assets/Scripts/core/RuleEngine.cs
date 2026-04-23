@@ -16,7 +16,6 @@ public static class RuleEngine
         }
 
         SwitchPlayer(state);
-
         return true;
     }
 
@@ -26,38 +25,25 @@ public static class RuleEngine
         if (state.board == null) return false;
 
         if (state.phase != GamePhase.Placement)
-        {
-            Debug.Log("IsValidPlace failed: game is not in Placement phase.");
             return false;
-        }
 
         if (!state.board.InBounds(pos))
-        {
-            Debug.Log("IsValidPlace failed: out of bounds.");
             return false;
-        }
 
         if (!state.board.IsEmpty(pos))
-        {
-            Debug.Log("IsValidPlace failed: target cell is not empty.");
             return false;
-        }
 
-        // 第一手例外：整个游戏的第一步不受相邻限制
         if (state.placementTurnsTaken == 0)
-        {
             return true;
-        }
 
-        // 从第二手开始：不能放在与“对手已有 stack”相邻的位置
         PlayerColor opponent = GetOpponent(state.currentPlayer);
 
         Position[] neighbors = new Position[]
         {
-            new Position(pos.row - 1, pos.col), // up
-            new Position(pos.row + 1, pos.col), // down
-            new Position(pos.row, pos.col - 1), // left
-            new Position(pos.row, pos.col + 1), // right
+            new Position(pos.row - 1, pos.col),
+            new Position(pos.row + 1, pos.col),
+            new Position(pos.row, pos.col - 1),
+            new Position(pos.row, pos.col + 1),
         };
 
         foreach (Position neighbor in neighbors)
@@ -67,13 +53,93 @@ public static class RuleEngine
 
             StackData stack = state.board.GetStack(neighbor);
             if (stack != null && stack.owner == opponent)
-            {
-                Debug.Log("IsValidPlace failed: adjacent to opponent stack.");
                 return false;
-            }
         }
 
         return true;
+    }
+
+    public static bool TryMove(GameState state, Position from, Position to)
+    {
+        if (!IsValidMove(state, from, to))
+            return false;
+
+        StackData movingStack = state.board.GetStack(from);
+        StackData targetStack = state.board.GetStack(to);
+
+        if (movingStack == null)
+            return false;
+
+        if (targetStack == null)
+        {
+            state.board.SetStack(to, new StackData(movingStack.owner, movingStack.height));
+            state.board.SetStack(from, null);
+        }
+        else
+        {
+            int newHeight = movingStack.height + targetStack.height;
+            state.board.SetStack(to, new StackData(movingStack.owner, newHeight));
+            state.board.SetStack(from, null);
+        }
+
+        state.playTurnsTaken++;
+        SwitchPlayer(state);
+        return true;
+    }
+
+    public static bool IsValidMove(GameState state, Position from, Position to)
+    {
+        if (state == null) return false;
+        if (state.board == null) return false;
+
+        if (state.phase != GamePhase.Play)
+        {
+            Debug.Log("IsValidMove failed: game is not in Play phase.");
+            return false;
+        }
+
+        if (!state.board.InBounds(from) || !state.board.InBounds(to))
+        {
+            Debug.Log("IsValidMove failed: out of bounds.");
+            return false;
+        }
+
+        if (!AreAdjacent(from, to))
+        {
+            Debug.Log("IsValidMove failed: source and target are not adjacent.");
+            return false;
+        }
+
+        StackData movingStack = state.board.GetStack(from);
+        if (movingStack == null)
+        {
+            Debug.Log("IsValidMove failed: source cell is empty.");
+            return false;
+        }
+
+        if (movingStack.owner != state.currentPlayer)
+        {
+            Debug.Log("IsValidMove failed: source stack does not belong to current player.");
+            return false;
+        }
+
+        StackData targetStack = state.board.GetStack(to);
+
+        if (targetStack == null)
+            return true;
+
+        if (targetStack.owner == state.currentPlayer)
+            return true;
+
+        Debug.Log("IsValidMove failed: target contains enemy stack. Use EAT instead.");
+        return false;
+    }
+
+    public static bool AreAdjacent(Position a, Position b)
+    {
+        int rowDiff = Mathf.Abs(a.row - b.row);
+        int colDiff = Mathf.Abs(a.col - b.col);
+        return rowDiff + colDiff == 1;
     }
 
     public static PlayerColor GetOpponent(PlayerColor player)
