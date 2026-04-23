@@ -1,4 +1,5 @@
 using System.Text;
+using UnityEngine;
 
 public static class GameEndChecker
 {
@@ -7,14 +8,17 @@ public static class GameEndChecker
         if (state == null || state.board == null)
             return;
 
-        // 1. Elimination
         int redTokens = CountTokensForPlayer(state.board, PlayerColor.Red);
         int blueTokens = CountTokensForPlayer(state.board, PlayerColor.Blue);
 
+        Debug.Log($"GameEndChecker: redTokens = {redTokens}, blueTokens = {blueTokens}, playTurns = {state.playTurnsTaken}");
+
+        // 1. Elimination
         if (redTokens == 0 && blueTokens == 0)
         {
             state.result = GameResult.Draw;
             state.phase = GamePhase.GameOver;
+            Debug.Log("GameEndChecker: both players eliminated -> Draw");
             return;
         }
 
@@ -22,6 +26,7 @@ public static class GameEndChecker
         {
             state.result = GameResult.BlueWins;
             state.phase = GamePhase.GameOver;
+            Debug.Log("GameEndChecker: Red eliminated -> BlueWins");
             return;
         }
 
@@ -29,6 +34,7 @@ public static class GameEndChecker
         {
             state.result = GameResult.RedWins;
             state.phase = GamePhase.GameOver;
+            Debug.Log("GameEndChecker: Blue eliminated -> RedWins");
             return;
         }
 
@@ -40,15 +46,17 @@ public static class GameEndChecker
         }
 
         state.repetitionCounts[stateKey]++;
+        Debug.Log($"GameEndChecker: repetition count for current state = {state.repetitionCounts[stateKey]}");
 
         if (state.repetitionCounts[stateKey] >= 3)
         {
             state.result = GameResult.Draw;
             state.phase = GamePhase.GameOver;
+            Debug.Log("GameEndChecker: threefold repetition -> Draw");
             return;
         }
 
-        // 3. Turn limit (300 play turns)
+        // 3. Turn limit
         if (state.playTurnsTaken >= 300)
         {
             if (redTokens > blueTokens)
@@ -65,6 +73,7 @@ public static class GameEndChecker
             }
 
             state.phase = GamePhase.GameOver;
+            Debug.Log($"GameEndChecker: turn limit reached -> {state.result}");
         }
     }
 

@@ -320,6 +320,7 @@ public class GameManager : MonoBehaviour
         boardRenderer.Render(gameState.board);
         boardRenderer.SetSelectedCell(selectedCell);
         RefreshUI();
+        EvaluateGameEndAfterSuccessfulPlayAction();
         PrintTurnInfo();
     }
 
@@ -359,14 +360,22 @@ public class GameManager : MonoBehaviour
 
     private void EvaluateGameEndAfterSuccessfulPlayAction()
     {
+        Debug.Log("EvaluateGameEndAfterSuccessfulPlayAction called.");
+
         GameEndChecker.EvaluateAfterPlayAction(gameState);
+
+        Debug.Log($"After evaluation -> Phase: {gameState.phase}, Result: {gameState.result}");
 
         if (gameState.phase == GamePhase.GameOver)
         {
             selectedCell = null;
             boardRenderer.SetSelectedCell(selectedCell);
-            RefreshUI();
+        }
 
+        RefreshUI();
+
+        if (gameState.phase == GamePhase.GameOver)
+        {
             Debug.Log($"Game Over! Result = {gameState.result}");
         }
     }
