@@ -10,10 +10,12 @@ public class GameManager : MonoBehaviour
     private GameState gameState;
     private Position? selectedCell = null;
     private PlayMode currentPlayMode = PlayMode.MoveEat;
-
+    private bool initialPlayStateRegistered = false;
     public GamePhase CurrentPhase => gameState.phase;
     public PlayerColor CurrentPlayer => gameState.currentPlayer;
     public PlayMode CurrentPlayMode => currentPlayMode;
+
+    public GameResult CurrentResult => gameState.result;
 
     private void Awake()
     {
@@ -38,14 +40,31 @@ public class GameManager : MonoBehaviour
             gameUI = FindObjectOfType<GameUI>();
         }
 
+        boardRenderer.BuildBoard();
+        StartNewGame();
+    }
+
+    public void StartNewGame()
+    {
         gameState = new GameState();
 
-        boardRenderer.BuildBoard();
+        selectedCell = null;
+        currentPlayMode = PlayMode.MoveEat;
+        initialPlayStateRegistered = false;
+
         boardRenderer.Render(gameState.board);
         boardRenderer.SetSelectedCell(selectedCell);
 
         RefreshUI();
         PrintTurnInfo();
+
+        Debug.Log("New game started.");
+    }
+
+    public void RestartGame()
+    {
+        Debug.Log("Restart button clicked.");
+        StartNewGame();
     }
 
     public void SetPlayModeToMoveEat()
@@ -65,6 +84,12 @@ public class GameManager : MonoBehaviour
     public void HandleCellClicked(Position pos)
     {
         Debug.Log($"Clicked cell: {pos}");
+
+        if (gameState.phase == GamePhase.GameOver)
+        {
+            Debug.Log("Game is over. No further actions allowed.");
+            return;
+        }
 
         if (gameState.phase == GamePhase.Placement)
         {
@@ -109,6 +134,8 @@ public class GameManager : MonoBehaviour
             selectedCell = null;
             boardRenderer.SetSelectedCell(selectedCell);
             Debug.Log("Placement phase complete. Entering Play phase.");
+
+            RegisterInitialPlayStateIfNeeded();
         }
 
         RefreshUI();
@@ -119,6 +146,7 @@ public class GameManager : MonoBehaviour
     {
         StackData clickedStack = gameState.board.GetStack(pos);
 
+        // 第一次点击：必须先选自己的 stack
         if (selectedCell == null)
         {
             if (clickedStack == null)
@@ -143,6 +171,7 @@ public class GameManager : MonoBehaviour
 
         Position from = selectedCell.Value;
 
+        // 点击自己当前选中的格子：取消选中
         if (from.row == pos.row && from.col == pos.col)
         {
             selectedCell = null;
@@ -152,20 +181,48 @@ public class GameManager : MonoBehaviour
             return;
         }
 
-        // 点击另一个己方 stack：
-        // 相邻 -> 尝试 MOVE merge
-        // 不相邻 -> 改选
-        if (clickedStack != null && clickedStack.owner == gameState.currentPlayer)
+        // 不是相邻格，且点击的是另一个己方 stack -> 改选
+        if (clickedStack != null && clickedStack.owner == gameState.currentPlayer && !RuleEngine.AreAdjacent(from, pos))
         {
-            if (!RuleEngine.AreAdjacent(from, pos))
+            selectedCell = pos;
+            boardRenderer.SetSelectedCell(selectedCell);
+            RefreshUI();
+            Debug.Log($"Selection changed to {pos}");
+            return;
+        }
+
+        // 必须是相邻格才能进行 Move/Eat
+        if (!RuleEngine.AreAdjacent(from, pos))
+        {
+            Debug.Log("Target must be adjacent in Move/Eat mode.");
+            return;
+        }
+
+        // 目标格为空：MOVE relocate
+        if (clickedStack == null)
+        {
+            bool moveSuccess = RuleEngine.TryMove(gameState, from, pos);
+
+            if (!moveSuccess)
             {
-                selectedCell = pos;
-                boardRenderer.SetSelectedCell(selectedCell);
-                RefreshUI();
-                Debug.Log($"Selection changed to {pos}");
+                Debug.Log("Invalid MOVE action.");
                 return;
             }
 
+            Debug.Log($"MOVE relocate succeeded: {from} -> {pos}");
+
+            selectedCell = null;
+            boardRenderer.Render(gameState.board);
+            boardRenderer.SetSelectedCell(selectedCell);
+            RefreshUI();
+            EvaluateGameEndAfterSuccessfulPlayAction();
+            PrintTurnInfo();
+            return;
+        }
+
+        // 目标格是己方：MOVE merge
+        if (clickedStack.owner == gameState.currentPlayer)
+        {
             bool mergeSuccess = RuleEngine.TryMove(gameState, from, pos);
 
             if (!mergeSuccess)
@@ -180,25 +237,27 @@ public class GameManager : MonoBehaviour
             boardRenderer.Render(gameState.board);
             boardRenderer.SetSelectedCell(selectedCell);
             RefreshUI();
+            EvaluateGameEndAfterSuccessfulPlayAction();
             PrintTurnInfo();
             return;
         }
 
-        // 先只做 MOVE；敌方格后面再接 EAT
-        bool success = RuleEngine.TryMove(gameState, from, pos);
+        // 目标格是敌方：尝试 EAT
+        bool eatSuccess = RuleEngine.TryEat(gameState, from, pos);
 
-        if (!success)
+        if (!eatSuccess)
         {
-            Debug.Log("Invalid MOVE action.");
+            Debug.Log("Invalid EAT action.");
             return;
         }
 
-        Debug.Log($"MOVE succeeded: {from} -> {pos}");
+        Debug.Log($"EAT succeeded: {from} -> {pos}");
 
         selectedCell = null;
         boardRenderer.Render(gameState.board);
         boardRenderer.SetSelectedCell(selectedCell);
         RefreshUI();
+        EvaluateGameEndAfterSuccessfulPlayAction();
         PrintTurnInfo();
     }
 
@@ -206,6 +265,7 @@ public class GameManager : MonoBehaviour
     {
         StackData clickedStack = gameState.board.GetStack(pos);
 
+        // 第一次点击：先选自己的 stack
         if (selectedCell == null)
         {
             if (clickedStack == null)
@@ -229,6 +289,7 @@ public class GameManager : MonoBehaviour
 
         Position from = selectedCell.Value;
 
+        // 点自己：取消选中
         if (from.row == pos.row && from.col == pos.col)
         {
             selectedCell = null;
@@ -238,14 +299,28 @@ public class GameManager : MonoBehaviour
             return;
         }
 
-        // 暂时先只搭输入框架，不执行真正 Cascade
+        // Cascade 必须通过点相邻格来指定方向
         if (!RuleEngine.AreAdjacent(from, pos))
         {
             Debug.Log("Cascade direction must be chosen by clicking an adjacent cell.");
             return;
         }
 
-        Debug.Log($"Cascade mode placeholder: source {from}, direction target {pos}");
+        bool success = RuleEngine.TryCascade(gameState, from, pos);
+
+        if (!success)
+        {
+            Debug.Log("Invalid CASCADE action.");
+            return;
+        }
+
+        Debug.Log($"CASCADE succeeded: source {from}, direction target {pos}");
+
+        selectedCell = null;
+        boardRenderer.Render(gameState.board);
+        boardRenderer.SetSelectedCell(selectedCell);
+        RefreshUI();
+        PrintTurnInfo();
     }
 
     private void RefreshUI()
@@ -259,5 +334,40 @@ public class GameManager : MonoBehaviour
     private void PrintTurnInfo()
     {
         Debug.Log($"Phase = {gameState.phase}, Current Player = {gameState.currentPlayer}, Placement Turns = {gameState.placementTurnsTaken}, Play Turns = {gameState.playTurnsTaken}, Mode = {currentPlayMode}");
+    }
+
+    private void RegisterInitialPlayStateIfNeeded()
+    {
+        if (gameState.phase != GamePhase.Play)
+            return;
+
+        if (initialPlayStateRegistered)
+            return;
+
+        string stateKey = GameEndChecker.BuildStateKey(gameState);
+
+        if (!gameState.repetitionCounts.ContainsKey(stateKey))
+        {
+            gameState.repetitionCounts[stateKey] = 0;
+        }
+
+        gameState.repetitionCounts[stateKey]++;
+        initialPlayStateRegistered = true;
+
+        Debug.Log("Initial play state registered for repetition tracking.");
+    }
+
+    private void EvaluateGameEndAfterSuccessfulPlayAction()
+    {
+        GameEndChecker.EvaluateAfterPlayAction(gameState);
+
+        if (gameState.phase == GamePhase.GameOver)
+        {
+            selectedCell = null;
+            boardRenderer.SetSelectedCell(selectedCell);
+            RefreshUI();
+
+            Debug.Log($"Game Over! Result = {gameState.result}");
+        }
     }
 }

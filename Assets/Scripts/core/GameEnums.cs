@@ -32,3 +32,11 @@ public enum PlayMode
     MoveEat,
     Cascade
 }
+
+public enum GameResult
+{
+    Ongoing,
+    RedWins,
+    BlueWins,
+    Draw
+}
